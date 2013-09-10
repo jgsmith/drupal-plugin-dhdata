@@ -1,0 +1,845 @@
+<?php
+
+/**
+ * @file
+ * Provides extensions for DHData.Org
+ */
+
+function dhdata_permission() {
+  return array(
+    'access organization request form' => array(
+      'title' => t('Access organization request form'),
+      'description' => t('Request that a new organization be created in CKAN.'),
+    ),
+    'access group request form' => array(
+      'title' => t('Access organization request form'),
+      'description' => t('Request that a new organization be created in CKAN.'),
+    ),
+  );
+}
+
+function dhdata_menu() {
+  $items = array();
+
+  $items['dhdata/request/group'] = array(
+    'title' => 'Request Group',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dhdata_group_request_form'),
+    'access arguments' => array('access group request form'),
+  );
+  $items['dhdata/request/organization'] = array(
+    'title' => 'Request Organization',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dhdata_organization_request_form'),
+    'access arguments' => array('access organization request form'),
+  );
+  $items['admin/config/services/ckan'] = array(
+    'title' => "CKAN REST API",
+    'description' => 'Configuration of CKAN REST API information.',
+    'access arguments' => array('access administration pages'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dhdata_ckan_api_config_form'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['admin/config/content/ckan'] = array(
+    'title' => "CKAN Group and Organization Creation",
+    'description' => 'Configuration of emails sent when someone requests a CKAN group or organization.',
+    'access arguments' => array('access administration pages'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dhdata_ckan_email_config_form'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+function dhdata_block_info() {
+  $blocks = array();
+  $blocks['dataset_search'] = array(
+    'info' => t('Dataset Search'),
+  );
+  return $blocks;
+}
+
+function dhdata_block_view($delta = "") {
+  $block = array();
+
+  switch($delta) {
+    case "dataset_search":
+      $block["content"] = dhdata_dataset_search_view();
+      break;
+  }
+  return $block;
+}
+
+function dhdata_email_hash() {
+  global $user;
+
+  return md5( $user -> mail );
+}
+
+function dhdata_dataset_search_view() {
+  $block = array();
+
+  $block = array(
+    'form' => array(
+      '#type' => 'markup',
+      '#markup' => '<span class="control-group search-giant"><input type="text" class="search" name="q" value="" autocomplete="off" placeholder="eg. Music"><button type="submit" value="Search">Submit</button></span>',
+      '#prefix' => '<form method="GET" action="/dataset">',
+      '#suffix' => '</form>',
+    ),
+    'message' => array(
+      '#type' => 'markup',
+      '#markup' => '<h3>Popular Tags</h3>',
+      '#prefix' => '<div class="tags">',
+      '#suffix' => '</div>',
+    ),
+  );
+
+  return $block;
+}
+
+
+function dhdata_ckan_email_config_form($form, &$form_state) {
+  $form['dhdata_org_editor_email'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Organization editor e-mail',
+    '#description' => 'The e-mail address to which organization requests are sent. This should be the person(s) responsible for acting on the organization request.',
+    '#default_value' => variable_get('dhdata_org_editor_email', ''),
+  );
+  $form['dhdata_group_editor_email'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Group editor e-mail',
+    '#description' => 'The e-mail address to which group requests are sent. This should be the person(s) responsible for acting on the group request.',
+    '#default_value' => variable_get('dhdata_group_editor_email', ''),
+  );
+  $form['dhdata_group_discussion_list_email'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Group discussion list',
+    '#description' => 'The e-mail address of the discussion list on which group requests are discussed by the community.',
+    '#default_value' => variable_get('dhdata_group_discussion_list_email', ''),
+  );
+
+  $form['ckan_emails'] = array(
+    '#type' => 'vertical_tabs',
+    '#title' => 'Email Settings',
+  );
+
+  $form['dhdata_email_request_organization_owner'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Organization Request Email to User',
+    '#description' => 'This email is sent to the person who is requesting the organization.',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+    '#group' => 'ckan_emails',
+  );
+  $form['dhdata_email_request_organization_owner']['vars'] = array(
+    '#markup' => '<p>Available variables are: [site:name], [site:url], [user:name], [organization:name], [organization:slug], [organization:description], [organization:image_url], [backup:name].</p>',
+  );
+  $data = variable_get("dhdata_email_request_organization_owner");
+  $form['dhdata_email_request_organization_owner']['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => (!empty($data['subject']) ? $data['subject'] : ''),
+  );
+  $form['dhdata_email_request_organization_owner']['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => (!empty($data['body']) ? $data['body'] : ''),
+  );
+  $form['dhdata_email_request_organization_backup'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Organization Request Email to Backup Admin',
+    '#description' => 'This email is sent to the person who is indicated as the secondary administrator in the request for the organization. This email should invite the recipient to confirm that they are willing to be the secondary administrator.',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+    '#group' => 'ckan_emails',
+  );
+  $form['dhdata_email_request_organization_backup']['vars'] = array(
+    '#markup' => '<p>Available variables are: [site:name], [site:url], [user:name], [organization:name], [organization:slug], [organization:description], [organization:image_url], [backup:name].</p>',
+  );
+  $data = variable_get("dhdata_email_request_organization_backup");
+  $form['dhdata_email_request_organization_backup']['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => (!empty($data['subject']) ? $data['subject'] : ''),
+  );
+  $form['dhdata_email_request_organization_backup']['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => (!empty($data['body']) ? $data['body'] : ''),
+  );
+  $form['dhdata_email_request_group_owner'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Group Request Email to User',
+    '#description' => 'This email is sent to the person who is requesting the group. This email should indicate that the details of the request have been sent to the DHData-discuss e-mail list for discussion.',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+    '#group' => 'ckan_emails',
+  );
+  $form['dhdata_email_request_group_owner']['vars'] = array(
+    '#markup' => '<p>Available variables are: [site:name], [site:url], [user:name], [group:name], [group:slug], [group:description], [group:image_url], [backup:name].</p>',
+  );
+  $data = variable_get("dhdata_email_request_group_owner");
+  $form['dhdata_email_request_group_owner']['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => (!empty($data['subject']) ? $data['subject'] : ''),
+  );
+  $form['dhdata_email_request_group_owner']['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => (!empty($data['body']) ? $data['body'] : ''),
+  );
+  $form['dhdata_email_request_group_backup'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Group Request Email to Backup Admin',
+    '#description' => 'This email is sent to the person who is indicated as the secondary administrator in the request for the group. This email should invite the recipient to confirm that they are willing to be the secondary administrator.',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+    '#group' => 'ckan_emails',
+  );
+  $form['dhdata_email_request_group_backup']['vars'] = array(
+    '#markup' => '<p>Available variables are: [site:name], [site:url], [user:name], [group:name], [group:slug], [group:description], [group:image_url], [backup:name].</p>',
+  );
+  $data = variable_get("dhdata_email_request_group_backup");
+  $form['dhdata_email_request_group_backup']['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => (!empty($data['subject']) ? $data['subject'] : ''),
+  );
+  $form['dhdata_email_request_group_backup']['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => (!empty($data['body']) ? $data['body'] : ''),
+  );
+
+  $form['dhdata_email_group_discuss'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Group Request Email to Discussion List',
+    '#description' => 'This email is sent to the discussion list. This email should inform the discussion list about the approval process and list the information about the requested group.',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => TRUE,
+    '#group' => 'ckan_emails',
+  );
+  $form['dhdata_email_group_discuss']['vars'] = array(
+    '#markup' => '<p>Available variables are: [site:name], [site:url], [user:name], [group:name], [group:slug], [group:description], [group:image_url], [backup:name].</p>',
+  );
+  $data = variable_get("dhdata_email_group_discuss");
+  $form['dhdata_email_group_discuss']['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => (!empty($data['subject']) ? $data['subject'] : ''),
+  );
+  $form['dhdata_email_group_discuss']['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => (!empty($data['body']) ? $data['body'] : ''),
+  );
+
+  if($form_state["submitted"]) {
+    return system_settings_form_submit($form, $form_state);
+  }
+  else {
+    return system_settings_form($form);
+  }
+}
+
+function dhdata_ckan_api_config_form($form, &$form_state) {
+  $form['dhdata_ckan_api_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('URL of the CKAN API'),
+    '#default_value' => variable_get('dhdata_ckan_api_url', 'http://127.0.0.1:8080/api/'),
+    '#size' => 40,
+    '#maxlength' => 255,
+    '#description' => t('The root URL for the CKAN API.'),
+    '#required' => TRUE,
+  );
+
+  $form['dhdata_ckan_api_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('CKAN API Key'),
+    '#default_value' => variable_get('dhdata_ckan_api_key', ''),
+    '#size' => 40,
+    '#maxlength' => 128,
+    '#description' => t('The API key for an account with administrative privileges.'),
+    '#required' => TRUE,
+  );
+  $form['dhdata_ckan_auth_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('CKAN Auth Tkt Secret'),
+    '#default_value' => variable_get('dhdata_ckan_auth_key', ''),
+    '#size' => 40,
+    '#maxlength' => 128,
+    '#description' => t('The shared secret used by Auth Tkt. Used to log the user into CKAN when they log into Drupal.'),
+    '#required' => TRUE,
+  );
+  if($form_state["submitted"]) {
+    return system_settings_form_submit($form, $form_state);
+  }
+  else {
+    return system_settings_form($form);
+  }
+}
+
+function dhdata_get_ckan_auth_key() {
+  return variable_get("dhdata_ckan_auth_key", "");
+}
+
+function dhdata_user_login(&$edit, $account) {
+  global $user;
+  $ticket = dhdata_get_tkt_hash($account->name);
+  setrawcookie("auth_tkt", $ticket, 0, '/', '', FALSE, TRUE);
+}
+
+function dhdata_user_insert(&$edit, $account, $category) {
+  /* here's where we want to create a CKAN user account and link it to the
+   * drupal account
+   */
+  $ckan_id = ckan_create_user(array(
+    'name' => $account->name, 
+    'email' => $account->mail,
+  ));
+  $record = array(
+    'ckan_id' => $ckan_id,
+    'uid' => $account->uid,
+  );
+  db_query("INSERT INTO {dhdata_ckan_link} (uid, ckan_id) VALUES (:uid, :ckan_id)", array(
+    ':uid' => $account->uid,
+    ':ckan_id' => $ckan_id,
+  ));
+}
+
+function dhdata_user_update(&$edit, $account, $category) {
+  global $user;
+  /* here's where we update the CKAN side of things */
+  $ckan_id = uid2ckan_id($account->uid);
+  if(!$ckan_id) {
+    /* create ckan identity if we can */
+    $ckan_id = ckan_create_user(array(
+      'name' => $account->name,
+      'email' => $account->mail,
+    ));
+    $record = array(
+      'ckan_id' => $ckan_id,
+      'uid' => $account->uid,
+    );
+    db_query("INSERT INTO {dhdata_ckan_link} (uid, ckan_id) VALUES (:uid, :ckan_id)", array(
+      ':uid' => $account->uid,
+      ':ckan_id' => $ckan_id,
+    ));
+  }
+  if($account->uid == $user->uid) {
+    $ticket = dhdata_get_tkt_hash($account->name);
+    setrawcookie("auth_tkt", $ticket, 0, '/', '', FALSE, TRUE);
+  }
+  ckan_update_user($ckan_id, array(
+    'name' => $account->name,
+    'email' => $account->mail,
+  ));
+}
+
+function dhdata_user_view($account, $view_mode, $langcode) {
+  /* here's where we can insert the user's CKAN API key */
+  global $user;
+  
+  if($user -> uid != $account -> uid) {
+    return;
+  }
+  $ckan_id = uid2ckan_id($account->uid);
+  if($ckan_id !== FALSE) {
+    /* We need to make sure the logged in user is the owner of this account */
+    $info = ckan_get_user($ckan_id);
+    $account->content['summary']['dhdata_ckan_api_key'] = array(
+      '#type' => 'user_profile_item',
+      '#title' => 'CKAN API Key',
+      '#markup' => '<code>' . $info["apikey"] . "</code>",
+    );
+  }
+}
+
+function dhdata_user_logout($account) {
+  /* here's where we can remove the CKAN login cookie stuff */
+  setrawcookie("auth_tkt", "INVALID", 0, '/', '', FALSE, TRUE);
+}
+
+function dhdata_user_delete($account) {
+  /* here's where we can remove the CKAN account */
+  $ckan_id = uid2ckan_id($account->uid);
+  if($ckan_id !== FALSE) {
+    ckan_delete_user($ckan_id);
+    db_query("DELETE FROM {dhdata_ckan_link} WHERE uid=:uid", array(
+      ':uid' => $account->uid,
+    ));
+  }
+}
+
+function dhdata_user_cancel($edit, $account, $method) {
+  dhdata_user_delete($account);
+}
+
+function dhdata_get_facets($type, $limit = 10) {
+  return ckan_api_request("list", "tag", array( "limit" => $limit ));
+}
+
+function uid2ckan_id($uid) {
+  $result = db_query("SELECT * FROM {dhdata_ckan_link} WHERE uid=:uid", array(
+    ':uid' => $uid,
+  ));
+  foreach($result as $row) {
+    return $row->ckan_id;
+  }
+  return FALSE;
+}
+
+function ckan_api_request($method, $object_type, $data = array()) {
+  $url_root = variable_get('dhdata_ckan_api_url', 'http://127.0.0.1:8080/api/');
+  $api_key = variable_get('dhdata_ckan_api_key');
+
+  if(!$api_key) {
+    throw new Exception("CKAN API key undefined.");
+  }
+
+  $http_method = "GET";
+  $info = array();
+  switch($method) {
+    case "create": $http_method = "POST"; break;
+    case "update": $http_method = "POST"; break;
+    case "delete": $http_method = "POST"; break;
+    case "show":   $http_method = "POST"; break;
+  }
+
+  $url = $url_root . "3/action/" . $object_type . "_" . $method;
+
+  switch($http_method) {
+    case "GET":
+      $response = http_get($url, array(
+        'headers' => array(
+          'Authorization' => $api_key,
+        ),
+      ), $info);
+      break;
+    case "PUT":
+      $response = http_put_data($url, json_encode($data, JSON_FORCE_OBJECT), array(
+        'headers' => array(
+          'Authorization' => $api_key,
+        ),
+      ), $info);
+      break;
+    case "POST":
+      $response = http_post_data($url, json_encode($data, JSON_FORCE_OBJECT), array(
+        'headers' => array(
+          'Authorization' => $api_key,
+        ),
+      ), $info);
+      break;
+    case "DELETE":
+      $response = http_delete($url, json_encode($data, JSON_FORCE_OBJECT), array(
+        'headers' => array(
+          'Authorization' => $api_key,
+        ),
+      ), $info);
+      break;
+  }
+  if($response === FALSE) {
+    /* die with an error */
+    throw new Exception("CKAN API call unsuccessful.");
+  }
+  $json = json_decode(http_parse_message($response)->body, true);
+  if(!$json['success']) {
+    throw new Exception("CKAN API call unsuccessful: " . $response);
+  }
+  return $json["result"];
+}
+
+function dhdata_get_popular_tags() {
+  $url_root = variable_get('dhdata_ckan_api_url', 'http://127.0.0.1:8080/api/');
+  $api_key = variable_get('dhdata_ckan_api_key');
+
+  if(!$api_key) {
+    return array();
+  }
+
+  $url = $url_root . "3/dhdata/popular-tags";
+  $response = http_get($url, array(
+    'headers' => array(
+      'Authorization' => $api_key,
+    ),
+  ), $info);
+  if($response === FALSE) {
+    return array();
+  }
+  $json = json_decode(http_parse_message($response)->body, true);
+  if(!$json['success']) {
+    return array();
+  }
+  return $json['result'];
+}
+
+/*
+ * Creates the CKAN user account and returns the account ID
+ *
+ * N.B.: The DHData module can't be active when the initial sysadmin account
+ * is created in drupal since it requires an API key. The API key has to be
+ * created for a CKAN account that isn't based on a Drupal account.
+ */
+function ckan_create_user($data) {
+  /*
+   * API key is stored in the module configuration info
+   */
+  /* The password is "random" since it won't be used */
+  $data['password'] = md5($data['name'] . time());
+  $resp = ckan_api_request('create', 'user', $data);
+
+  /* the above call will throw an error if it doesn't work */
+  return $resp["id"];
+}
+
+function ckan_update_user($ckan_id, $data) {
+  $data['id'] = $ckan_id;
+  ckan_api_request('update', 'user', $data);
+}
+
+function ckan_delete_user($ckan_id) {
+  $resp = ckan_api_request('delete', 'user', array(
+    'id' => $ckan_id
+  ));
+}
+
+function ckan_get_user($ckan_id) {
+  $resp = ckan_api_request('show', 'user', array(
+    'id' => $ckan_id,
+  ));
+  return $resp;
+}
+
+function dhdata_get_tkt_hash( $user ) {
+
+    // set the timestamp to now 
+    // unless a time is specified
+    $key = dhdata_get_ckan_auth_key();
+    $data = "userid_type:unicode";
+    $ts = time();
+    $ip = "\0\0\0\0";
+    $ipts = $ip . pack( "N", $ts );
+
+    // make the cookie signature
+    $digest0 = md5( $ipts . $key . $user . "\0\0" . $data );
+    $digest = md5( $digest0 . $key );
+
+    return sprintf("%s%08x%s!%s", $digest, $ts, $user, $data);
+}
+
+###
+### Management Forms
+###
+
+function dhdata_organization_request_form($form, &$form_state) {
+  global $user;
+  global $base_url;
+
+  $form = array();
+
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit Request'),
+  );
+  $form['actions']['cancel'] = array(
+    '#markup' => l(t('Cancel'), ''),
+  );
+  $form['naming_and_description'] = array(
+    '#markup' => '<p>When requesting an organization, please make sure that the organization does not already exist. The description of the organization should be around 250 words.</p>',
+  );
+  $form['administration'] = array(
+    '#markup' => '<p>When the organization is created, you will be added as an administrator. The secondary administrator you name will also be added as an administrator.</p>',
+  );
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'My Organization',
+    '#title' => 'Title',
+    '#required' => TRUE,
+  );
+  $form['slug'] = array(
+    '#type' => 'machine_name',
+    '#title' => t('URL Path'),
+    '#required' => TRUE,
+    '#field_prefix' => t('https://www.dhdata.org/organization/'),
+    '#machine_name' => array(
+      'standalone' => TRUE,
+      'exists' => 'dhdata_organization_slug_exists',
+      'source' => array('name'),
+      'label' => t('URL Path'),
+      'replace_pattern' => '[^-a-z0-9_]+',
+      'error' => t('The URL must contain only lowercase letters, numbers, hyphens, and underscores.'),
+      'replace' => '-',
+    ),
+  );
+  $form['image_url'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'http://example.com/my-image.jpg',
+    '#title' => 'Image URL',
+  );
+  $form['secondary_admin'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'Secondary administrator',
+    '#title' => 'Secondary Admin',
+    '#autocomplete_path' => 'user/autocomplete',
+    '#required' => TRUE,
+    '#description' => 'A backup person responsible for managing the organization. Enter their DHData.Org username.',
+  );
+  $form['description'] = array(
+    '#type' => 'textarea',
+    '#placeholder' => 'A little information about my organization...',
+    '#title' => 'Description',
+    '#description' => 'A description of the organization using Markdown.',
+    '#required' => TRUE,
+  );
+
+  $form['tos'] = array(
+    '#markup' => '<p>By submitting this form, you agree that you are associated with and are allowed to represent the above named organization for the purposes of managing datasets on DHData.Org. You also agree that in the event you are unable to provide oversight for this organization, you will give responsibility to someone else by making them an administrator of the organization or you will notify the DHData.Org administration.</p>',
+  );
+
+  return $form;
+}
+
+function dhdata_organization_request_form_validate($form, &$form_state) {
+  $backup_user = $form_state['values']['secondary_admin'];
+  if(!$backup_user || !user_load_by_name($backup_user)) {
+    form_set_error('secondary_admin', t('You must select a secondary administrator.'));
+  }
+}
+
+function dhdata_organization_request_form_submit($form, &$form_state) {
+  global $user;
+  global $base_url;
+
+  # Send an email to admin@dhdata.org, the user, and the secondary admin
+  $backup_user = $form_state['values']['secondary_admin'];
+  $backup_user = user_load_by_name($backup_user);
+  $params = array(
+    '[user:name]' => format_username($user),
+    '[organization:name]' => $form_state['values']['name'],
+    '[organization:description]' => $form_state['values']['description'],
+    '[organization:image_url]' => $form_state['values']['image_url'],
+    '[organization:slug]' => $form_state['values']['slug'],
+    '[site:name]' => variable_get('site_name', ''),
+    '[site:url]' => $base_url,
+    '[backup:name]' => format_username($backup_user),
+  );
+  # TODO: allow selection of user's preferred language
+  drupal_mail('dhdata', 'request_organization_owner', $user->mail, 'en', $params);
+  drupal_mail('dhdata', 'request_organization_backup', $backup_user->mail, 'en', $params);
+  drupal_set_message('Your organization request has been sent to the site administrator. You will receive another email from the administrator when your organization has been created.');
+  $form_state['redirect'] = "<front>";
+}
+
+function dhdata_mail($key, &$message, $params) {
+  $settings = variable_get("dhdata_email_" . $key);
+
+  if(empty($settings['subject']) || empty($settings['body'])) {
+    $message['send'] = FALSE;
+    return;
+  }
+
+  switch($key) {
+    case 'group_discuss':
+      $editor = variable_get("dhdata_group_editor_email");
+      if($editor) {
+        $message['headers']['cc'] = $editor;
+      }
+      break;
+    case 'request_organization_owner':
+      $editor = variable_get("dhdata_org_editor_email");
+      if($editor) {
+        $message['headers']['cc'] = $editor;
+      }
+      break;
+    case 'request_organization_backup':
+      $editor = variable_get("dhdata_org_editor_email");
+      if($editor) {
+        $message['headers']['cc'] = $editor;
+      }
+      break;
+    case 'request_group_owner':
+      # CC to the dhdata-discuss list
+      $editor = variable_get("dhdata_group_editor_email");
+      if($editor) {
+        $message['headers']['cc'] = $editor;
+      }
+      break;
+    case 'request_group_backup':
+      $editor = variable_get("dhdata_group_editor_email");
+      if($editor) {
+        $message['headers']['cc'] = $editor;
+      }
+      break;
+  }
+
+  if($editor) {
+    $message['from'] = $editor;
+  }
+
+  $langcode = $message['language']->language;
+  $message['subject'] = t($settings['subject'], $params, array('langcode' => $langcode));
+  $message['body'] = array(t($settings['body'], $params, array('langcode' => $langcode)));
+}
+
+function dhdata_group_request_form($form, &$form_state) {
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit Request'),
+  );
+  $form['actions']['cancel'] = array(
+    '#markup' => l(t('Cancel'), ''),
+  );
+  $form['naming_and_description'] = array(
+    '#markup' => '<p>When requesting a group, please make sure that a similar group does not already exist. When possible, select a name for the group from the <a href="http://www.loc.gov/catdir/cpso/lcco/" target="_new">Library of Congress Classification System</a>. The description of the group should be around 250 words and provide clear guidance for community members submitting datasets.</p>',
+  );
+  $form['administration'] = array(
+    '#markup' => '<p>A mailing list will be created for the group. You will be the primary moderator of the mailing list. The secondary administrator you name will be the backup moderator of the mailing list. When the mailing list no longer has moderators or the group no longer has datasets, it will be removed.</p>',
+  );
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'My Group',
+    '#title' => 'Title',
+    '#required' => TRUE,
+  );
+  $form['slug'] = array(
+    '#type' => 'machine_name',
+    '#title' => t('URL'),
+    '#placeholder' => '<group>',
+    '#required' => TRUE,
+    '#field_prefix' => t('https://www.dhdata.org/group/'),
+    '#machine_name' => array(
+      'standalone' => TRUE,
+      'exists' => 'dhdata_group_slug_exists',
+      'source' => array('name'),
+      'label' => t('URL Path'),
+      'replace_pattern' => '[^-a-z0-9_]+',
+      'error' => t('The URL must contain only lowercase letters, numbers, hyphens, and underscores.'),
+      'replace' => '-',
+    ),
+  );
+  $form['image_url'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'http://example.com/my-image.jpg',
+    '#title' => 'Image URL',
+  );
+  $form['secondary_admin'] = array(
+    '#type' => 'textfield',
+    '#placeholder' => 'Secondary administrator',
+    '#title' => 'Secondary Admin',
+    '#autocomplete_path' => 'user/autocomplete',
+    '#required' => TRUE,
+    '#description' => 'A backup person responsible for managing the group. Enter their DHData.Org username.',
+  );
+  $form['description'] = array(
+    '#type' => 'textarea',
+    '#placeholder' => 'A little information about my group...',
+    '#description' => 'A description of the group using Markdown.',
+    '#title' => 'Description',
+    '#required' => TRUE,
+  );
+  $form['tos'] = array(
+    '#markup' => '<p>By submitting this form, you agree to be the primary moderator of the group and its associated mailing list. You also agree that in the event you are unable to provide this oversight you will give responsibility to someone else by making them an owner of the mailing list or you will notify the DHData.Org administration.</p>',
+  );
+
+  return $form;
+
+}
+
+function dhdata_group_request_form_validate($form, &$form_state) {
+  $backup_user = $form_state['values']['secondary_admin'];
+  if(!$backup_user || !user_load_by_name($backup_user)) {
+    form_set_error('secondary_admin', t('You must select a secondary administrator.'));
+  }
+}
+
+function dhdata_group_request_form_submit($form, &$form_state) {
+  global $user;
+  global $base_url;
+
+  # Send an email to admin@dhdata.org, the user, and the secondary admin
+  $backup_user = $form_state['values']['secondary_admin'];
+  $backup_user = user_load_by_name($backup_user);
+  $params = array(
+    '[user:name]' => format_username($user),
+    '[group:name]' => $form_state['values']['name'],
+    '[group:description]' => $form_state['values']['description'],
+    '[group:image_url]' => $form_state['values']['image_url'],
+    '[group:slug]' => $form_state['values']['slug'],
+    '[site:name]' => variable_get('site_name', ''),
+    '[site:url]' => $base_url,
+    '[backup:name]' => format_username($backup_user),
+  );
+  # TODO: allow selection of user's preferred language
+  drupal_mail('dhdata', 'request_group_owner', $user->mail, 'en', $params);
+  drupal_mail('dhdata', 'request_group_backup', $backup_user->mail, 'en', $params);
+  $list   = variable_get("dhdata_group_discussion_list_email");
+  if($list) {
+    drupal_mail('dhdata', 'group_discuss', $list, 'en', $params);
+  }
+  drupal_set_message('Your group request has been sent to the site administrator. You will receive another email from the administrator when your group has been created.');
+  $form_state['redirect'] = "<front>";
+}
+
+
+# $function($element['#value'], $element, $form_state)
+
+function dhdata_organization_slug_exists($value, $element, $form_state) {
+  try {
+    ckan_api_request("show", "organization", array( "id" => $value ));
+  }
+  catch(Exception $e) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+function dhdata_group_slug_exists($value, $element, $form_state) {
+  try {
+    ckan_api_request("show", "group", array( "id" => $value ));
+  }
+  catch(Exception $e) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+function dhdata_filter_info() {
+  $filters = array();
+  $filters['dhdatafilter'] = array(
+    'title' => t('5 Stars filter'),
+    'description' => t('Enables display of 5-star ratings with simple markup.'),
+    'process callback' => 'dhdata_5star_filter',
+  );
+  return $filters;
+}
+
+function dhdata_5star_filter_callback($matches) {
+  $num = strlen($matches[0])-2;
+  $stars = ($num == 1 ? "star" : "stars");
+  return "<span title='$num $stars'>" . ($num > 0 ? "<span class='stars'>" . str_repeat('&#10029;', $num) . "</span>" : "") . ($num < 5 ? "<span class='nostars'>" . str_repeat('&#10029;', 5 - $num) . "</span>" : "") . "</span>";
+}
+
+function dhdata_5star_range_filter_callback($matches) {
+  $min = strlen($matches[1]);
+  $max = strlen($matches[2]) + $min;
+  return "<span title='$min-$max stars'>" . ($min > 0 ? "<span class='stars'>" . str_repeat('&#10029;', $min) . "</span>" : "") . ($max > $min ? "<span class='possible-stars'>" . str_repeat('&#10029;', $max - $min) . "</span>" : "") . ($max < 5 ? "<span class='nostars'>" . str_repeat('&#10029;', 5 - $max) . "</span>" : "") . "</span>";
+}
+
+function dhdata_5star_filter($text, $filter) {
+  # looking for $*$ through $*****$
+  # replacing with <span class='stars'>&star;...</span>
+  $text = preg_replace_callback('{\$\*{1,5}\$}', "dhdata_5star_filter_callback", $text);
+  return preg_replace_callback('{\$(\*{1,4})\((\*{1,4})\)\$}', "dhdata_5star_range_filter_callback", $text);
+}
+
+?>

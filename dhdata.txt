@@ -1,0 +1,6 @@
+name = dhdata.org Extensions
+description = Provides CKAN integration and other extensions for Drupal as used by dhdata.org.
+package = DHData.Org Modules
+core = 7.x
+files[] = dhdata.module
+files[] = dhdata.install

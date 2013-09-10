@@ -1,0 +1,5 @@
+name = DH Data extensions
+description = Provides custom code and modules to tie Drupal together with CKAN.
+package = "Other"
+core = 7.x
+

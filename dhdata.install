@@ -1,0 +1,41 @@
+<?php
+
+function dhdata_uninstall() {
+  drupal_uninstall_schema('dhdata');
+}
+
+function dhdata_install() {
+  drupal_install_schema('dhdata');
+}
+
+function dhdata_schema() {
+  return array(
+    "dhdata_ckan_link" => array(
+      'description' => 'The table linking Drupal user ids with CKAN user ids.',
+      'indexes' => array(
+        'uid' => array('uid'),
+      ),
+      'unique keys' => array(
+        'uid' => array('uid'),
+        'ckan_id' => array('ckan_id'),
+      ),
+      'primary key' => array('uid'),
+      'fields' => array(
+        'uid' => array(
+          'description' => t('The Drupal user.'),
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'ckan_id' => array(
+          'description' => t('The CKAN user id.'),
+          'type' => 'text',
+          'size' => 'tiny',
+          'not null' => TRUE,
+        ),
+      ),
+    ),
+  );
+}
+
+?>
